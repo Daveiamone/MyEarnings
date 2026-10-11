@@ -1,0 +1,22 @@
+
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ru.zarabotok.calendar'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ru.zarabotok.calendar'
+        minSdk 26
+        targetSdk 28
+        versionCode 1
+        versionName '1.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
