@@ -170,37 +170,84 @@ public class MainActivity extends Activity {
     private void savePhotos(String key, JSONArray a) { photoPrefs.edit().putString(key, a.toString()).apply(); }
     private void showPhotos(String key) {
         photosDialogDate = key;
-        if (photosDialog == null || !photosDialog.isShowing()) {
-            photosDialog = new AlertDialog.Builder(this).setTitle("Документы · " + key)
-                    .setPositiveButton("Готово", null).setNegativeButton("Назад", null).create();
-            photosDialog.setOnShowListener(v -> {
-                photosDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w -> {
-                    photosDialog.dismiss(); photosDialog = null; photosList = null;
-                    showEntryDialog(LocalDate.parse(photosDialogDate, keyFormat));
-                });
-                photosDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(w -> {
-                    String returnDate = photosDialogDate;
-                    photosDialog.dismiss(); photosDialog = null; photosList = null;
-                    showEntryDialog(LocalDate.parse(returnDate, keyFormat));
-                });
+        // Закрываем предыдущий экземпляр, чтобы окна не накладывались друг на друга.
+        if (photosDialog != null) {
+            try { if (photosDialog.isShowing()) photosDialog.dismiss(); } catch (Exception ignored) { }
+            photosDialog = null;
+        }
+
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(12), dp(8), dp(12), dp(8));
+        list.setBackgroundColor(BG);
+
+        Button add = button("＋ Добавить фото");
+        list.addView(add, new LinearLayout.LayoutParams(-1, dp(46)));
+        add.setOnClickListener(v -> {
+            pendingPhotoDate = key;
+            // Закрываем список перед открытием системного выбора файлов.
+            if (photosDialog != null) photosDialog.dismiss();
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("image/*");
+            i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(i, 4102);
+        });
+
+        JSONArray a = getPhotos(key);
+        int visible = 0;
+        for (int n = 0; n < a.length(); n++) {
+            final String path = a.optString(n, "");
+            File f = new File(path);
+            if (!f.exists()) continue;
+            visible++;
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(6), 0, dp(6));
+            ImageView im = new ImageView(this);
+            im.setImageBitmap(decodePhoto(path, 240, 240));
+            im.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            row.addView(im, new LinearLayout.LayoutParams(dp(72), dp(72)));
+            TextView name = text(f.getName(), 10, Color.WHITE, false);
+            name.setPadding(dp(8), 0, dp(4), 0);
+            row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            Button open = smallButton("Открыть");
+            row.addView(open, new LinearLayout.LayoutParams(dp(78), dp(42)));
+            open.setOnClickListener(v -> viewPhoto(key, path));
+            row.setOnClickListener(v -> viewPhoto(key, path));
+            list.addView(row);
+        }
+        if (visible == 0) list.addView(text("Для этого дня фотографий пока нет.", 13, MUTED, false));
+
+        ScrollView sc = new ScrollView(this);
+        sc.setBackgroundColor(BG);
+        sc.addView(list);
+        TextView title = text("Документы · " + key, 18, Color.WHITE, true);
+        title.setPadding(dp(22), dp(16), dp(18), dp(8));
+
+        photosDialog = new AlertDialog.Builder(this)
+                .setCustomTitle(title)
+                .setView(sc)
+                .setPositiveButton("Готово", null)
+                .setNegativeButton("Назад", null)
+                .create();
+        photosDialog.setOnShowListener(v -> {
+            photosDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w -> {
+                String returnDate = photosDialogDate;
+                photosDialog.dismiss(); photosDialog = null; photosList = null;
+                showEntryDialog(LocalDate.parse(returnDate, keyFormat));
             });
-            photosDialog.show();
-        }
-        photosDialog.setTitle("Документы · " + key);
-        LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); list.setPadding(dp(12),dp(4),dp(12),dp(4)); list.setBackgroundColor(BG);
-        photosList = list;
-        Button add = button("＋ Добавить фото"); list.addView(add,new LinearLayout.LayoutParams(-1,dp(46)));
-        add.setOnClickListener(v -> { pendingPhotoDate=key; Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT); i.addCategory(Intent.CATEGORY_OPENABLE); i.setType("image/*"); i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true); startActivityForResult(i,4102); });
-        JSONArray a=getPhotos(key);
-        if(a.length()==0) list.addView(text("Для этого дня фотографий пока нет.",13,MUTED,false));
-        for(int n=0;n<a.length();n++) { final String path=a.optString(n,""); File f=new File(path); if(!f.exists()) continue;
-            LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(0,dp(6),0,dp(6));
-            ImageView im=new ImageView(this); im.setImageBitmap(decodePhoto(path,240,240)); im.setScaleType(ImageView.ScaleType.CENTER_CROP); row.addView(im,new LinearLayout.LayoutParams(dp(72),dp(72)));
-            TextView name=text(f.getName(),10,DARK,false); name.setPadding(dp(8),0,dp(4),0); row.addView(name,new LinearLayout.LayoutParams(0,-2,1));
-            Button open=smallButton("Открыть"); row.addView(open,new LinearLayout.LayoutParams(dp(78),dp(42))); open.setOnClickListener(v->viewPhoto(key,path)); row.setOnClickListener(v->viewPhoto(key,path)); list.addView(row);
-        }
-        ScrollView sc=new ScrollView(this); sc.addView(list);
-        photosDialog.setView(sc);
+            photosDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(w -> {
+                String returnDate = photosDialogDate;
+                photosDialog.dismiss(); photosDialog = null; photosList = null;
+                showEntryDialog(LocalDate.parse(returnDate, keyFormat));
+            });
+            if (photosDialog.getWindow() != null) {
+                photosDialog.getWindow().setBackgroundDrawable(roundRect(BG, BORDER, 1, 8));
+            }
+        });
+        photosDialog.show();
         if (photosDialog.getWindow() != null) photosDialog.getWindow().setBackgroundDrawable(roundRect(BG, BORDER, 1, 8));
     }
     private void viewPhoto(String key,String path) {
@@ -226,10 +273,26 @@ public class MainActivity extends Activity {
         });
         photoView.show();
     }
-    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data) {
-        super.onActivityResult(requestCode,resultCode,data); if(requestCode!=4102||resultCode!=RESULT_OK||data==null||pendingPhotoDate==null)return; int count=0;
-        try { if(data.getClipData()!=null){for(int i=0;i<data.getClipData().getItemCount();i++)if(copyPhoto(data.getClipData().getItemAt(i).getUri(),pendingPhotoDate))count++;} else if(data.getData()!=null&&copyPhoto(data.getData(),pendingPhotoDate))count++; } catch(Exception e) { Toast.makeText(this,"Не все фотографии удалось добавить",Toast.LENGTH_LONG).show(); }
-        Toast.makeText(this,"Добавлено фотографий: "+count,Toast.LENGTH_SHORT).show(); if (photosDialog != null && photosDialog.isShowing()) showPhotos(pendingPhotoDate);
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != 4102) return;
+        String dateKey = pendingPhotoDate;
+        if (resultCode == RESULT_OK && data != null && dateKey != null) {
+            int count = 0;
+            try {
+                if (data.getClipData() != null) {
+                    for (int i = 0; i < data.getClipData().getItemCount(); i++) {
+                        if (copyPhoto(data.getClipData().getItemAt(i).getUri(), dateKey)) count++;
+                    }
+                } else if (data.getData() != null && copyPhoto(data.getData(), dateKey)) {
+                    count++;
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "Не все фотографии удалось добавить", Toast.LENGTH_LONG).show();
+            }
+            Toast.makeText(this, "Добавлено фотографий: " + count, Toast.LENGTH_SHORT).show();
+        }
+        if (dateKey != null) showPhotos(dateKey);
     }
     private boolean copyPhoto(Uri uri,String key) {
         try(InputStream in=getContentResolver().openInputStream(uri)){ if(in==null)return false; File dir=new File(getFilesDir(),"day_photos/"+key); if(!dir.exists()&&!dir.mkdirs())return false; File f=new File(dir,"document_"+System.currentTimeMillis()+".img"); try(FileOutputStream out=new FileOutputStream(f)){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);} JSONArray a=getPhotos(key);a.put(f.getAbsolutePath());savePhotos(key,a);return true;}catch(Exception e){return false;}
