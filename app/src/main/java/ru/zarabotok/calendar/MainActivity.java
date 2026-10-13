@@ -35,12 +35,16 @@ import java.text.NumberFormat;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final int GREEN = Color.rgb(0, 214, 154);
+    private static final int GREEN = Color.rgb(0, 153, 0); // HSV(120, 100%, 60%)
     private static final int DARK = Color.rgb(242, 242, 242);
     private static final int MUTED = Color.rgb(155, 155, 155);
     private static final int BG = Color.rgb(16, 16, 16);
     private static final int BORDER = Color.rgb(76, 76, 76);
     private static final int CELL = Color.rgb(51, 51, 51);
+    private static final int INPUT_BG = Color.BLACK;
+    private AlertDialog photosDialog;
+    private LinearLayout photosList;
+    private String photosDialogDate;
     private SharedPreferences photoPrefs;
     private final String[] rateKeys = {"rate_glass", "rate_pet", "rate_km", "rate_litre", "rate_kegs", "rate_fixed"};
     private final String[] rateNames = {"Стекло", "Пэт", "Км", "Литр", "Кеги", "Фиксированная сумма за день"};
@@ -110,7 +114,7 @@ public class MainActivity extends Activity {
             dayBox.addView(text(String.valueOf(dn), 11, DARK, true));
             TextView amount = text(has ? compactMoney(totalForDate(date)) : "", 8, GREEN, true); amount.setGravity(Gravity.CENTER); dayBox.addView(amount);
             if (photoCount(key) > 0) { TextView ph = text("▣ " + photoCount(key), 7, DARK, false); ph.setGravity(Gravity.CENTER); dayBox.addView(ph); }
-            if (date.getDayOfWeek().getValue() == 7) { TextView week = text("Нед. " + compactMoney(totalForWeek(date)), 7, DARK, true); week.setGravity(Gravity.CENTER); dayBox.addView(week); }
+            if (date.getDayOfWeek().getValue() == 7) { TextView week = text("Нед. " + compactMoney(totalForWeek(date)), 7, GREEN, true); week.setGravity(Gravity.CENTER); dayBox.addView(week); }
             if (dn == days) { TextView month = text("Мес. " + compactMoney(totalForMonth(ym)), 7, GREEN, true); month.setGravity(Gravity.CENTER); dayBox.addView(month); }
             dayBox.setOnClickListener(v -> showEntryDialog(date)); grid.addView(dayBox, p);
         }
@@ -124,9 +128,13 @@ public class MainActivity extends Activity {
         String[] keys = {"glass", "pet", "km", "litre", "kegs"}; String[] labels = {"Стекло", "Пэт", "Км", "Литр", "Кеги"};
         double[] rates = getRates(); EditText[] fields = new EditText[5];
         LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(20), dp(8), dp(20), dp(4));
+        TextView dateLabel = text(date.format(DateTimeFormatter.ofPattern("d MMMM yyyy", new Locale("ru", "RU"))), 16, Color.BLACK, true);
+        dateLabel.setGravity(Gravity.CENTER_VERTICAL); dateLabel.setPadding(dp(12), 0, dp(12), 0); dateLabel.setBackground(roundRect(Color.WHITE, Color.WHITE, 1, 5));
+        form.addView(dateLabel, new LinearLayout.LayoutParams(-1, dp(42)));
         for (int i = 0; i < fields.length; i++) {
             form.addView(text(labels[i] + " · " + formatMoney(rates[i]) + " ₽ за единицу", 14, DARK, true));
             EditText input = new EditText(this); input.setSingleLine(true); input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            input.setTextColor(Color.WHITE); input.setHintTextColor(Color.rgb(170,170,170)); input.setBackground(roundRect(INPUT_BG, BORDER, 1, 5)); input.setPadding(dp(10), 0, dp(10), 0);
             double value = old == null ? 0 : old.optDouble(keys[i], 0); input.setText(value == 0 ? "" : numberForInput(value)); input.setHint("Количество");
             form.addView(input, new LinearLayout.LayoutParams(-1, dp(48))); fields[i] = input;
         }
@@ -154,13 +162,33 @@ public class MainActivity extends Activity {
             else dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view -> new AlertDialog.Builder(this).setTitle("Удалить запись?")
                     .setMessage("Заработок будет удалён. Фотографии документов останутся.").setNegativeButton("Отмена", null).setPositiveButton("Удалить", (dd, ww) -> { entries.remove(key); saveEntries(); dialog.dismiss(); showCalendar(); }).show());
         }); dialog.show();
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(roundRect(BG, BORDER, 1, 8));
     }
 
     private JSONArray getPhotos(String key) { try { return new JSONArray(photoPrefs.getString(key, "[]")); } catch (JSONException e) { return new JSONArray(); } }
     private int photoCount(String key) { return getPhotos(key).length(); }
     private void savePhotos(String key, JSONArray a) { photoPrefs.edit().putString(key, a.toString()).apply(); }
     private void showPhotos(String key) {
+        photosDialogDate = key;
+        if (photosDialog == null || !photosDialog.isShowing()) {
+            photosDialog = new AlertDialog.Builder(this).setTitle("Документы · " + key)
+                    .setPositiveButton("Готово", null).setNegativeButton("Назад", null).create();
+            photosDialog.setOnShowListener(v -> {
+                photosDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w -> {
+                    photosDialog.dismiss(); photosDialog = null; photosList = null;
+                    showEntryDialog(LocalDate.parse(photosDialogDate, keyFormat));
+                });
+                photosDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(w -> {
+                    String returnDate = photosDialogDate;
+                    photosDialog.dismiss(); photosDialog = null; photosList = null;
+                    showEntryDialog(LocalDate.parse(returnDate, keyFormat));
+                });
+            });
+            photosDialog.show();
+        }
+        photosDialog.setTitle("Документы · " + key);
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); list.setPadding(dp(12),dp(4),dp(12),dp(4)); list.setBackgroundColor(BG);
+        photosList = list;
         Button add = button("＋ Добавить фото"); list.addView(add,new LinearLayout.LayoutParams(-1,dp(46)));
         add.setOnClickListener(v -> { pendingPhotoDate=key; Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT); i.addCategory(Intent.CATEGORY_OPENABLE); i.setType("image/*"); i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true); startActivityForResult(i,4102); });
         JSONArray a=getPhotos(key);
@@ -172,18 +200,36 @@ public class MainActivity extends Activity {
             Button open=smallButton("Открыть"); row.addView(open,new LinearLayout.LayoutParams(dp(78),dp(42))); open.setOnClickListener(v->viewPhoto(key,path)); row.setOnClickListener(v->viewPhoto(key,path)); list.addView(row);
         }
         ScrollView sc=new ScrollView(this); sc.addView(list);
-        new AlertDialog.Builder(this).setTitle("Документы · "+key).setView(sc).setPositiveButton("Готово",(d,w)->showCalendar()).setNegativeButton("Назад",(d,w)->showEntryDialog(LocalDate.parse(key,keyFormat))).show();
+        photosDialog.setView(sc);
+        if (photosDialog.getWindow() != null) photosDialog.getWindow().setBackgroundDrawable(roundRect(BG, BORDER, 1, 8));
     }
     private void viewPhoto(String key,String path) {
-        File f=new File(path); if(!f.exists()){showPhotos(key);return;}
+        File f=new File(path);
+        if(!f.exists()){showPhotos(key);return;}
         ImageView im=new ImageView(this); im.setImageBitmap(decodePhoto(path,1400,1800)); im.setAdjustViewBounds(true); im.setScaleType(ImageView.ScaleType.FIT_CENTER);
         ScrollView sc=new ScrollView(this); sc.setBackgroundColor(Color.BLACK); sc.addView(im);
-        new AlertDialog.Builder(this).setTitle("Фотография документа").setView(sc).setNegativeButton("Закрыть",null).setNeutralButton("Удалить фото",(d,w)->new AlertDialog.Builder(this).setTitle("Удалить фотографию?").setNegativeButton("Отмена",(dd,ww)->showPhotos(key)).setPositiveButton("Удалить",(dd,ww)->{JSONArray old=getPhotos(key), updated=new JSONArray(); for(int i=0;i<old.length();i++){String q=old.optString(i,"");if(!q.equals(path))updated.put(q);} f.delete();savePhotos(key,updated);showPhotos(key);}).show()).show();
+        AlertDialog photoView = new AlertDialog.Builder(this).setTitle("Фотография документа").setView(sc)
+                .setNegativeButton("Назад", null).setNeutralButton("Удалить фото", null).create();
+        photoView.setOnShowListener(v -> {
+            photoView.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(w -> {
+                photoView.dismiss(); showPhotos(key);
+            });
+            photoView.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(w -> {
+            new AlertDialog.Builder(this).setTitle("Удалить фотографию?")
+                    .setNegativeButton("Отмена", (dd,ww) -> { photoView.dismiss(); showPhotos(key); })
+                    .setPositiveButton("Удалить", (dd,ww) -> {
+                        JSONArray old=getPhotos(key), updated=new JSONArray();
+                        for(int i=0;i<old.length();i++){String q=old.optString(i,"");if(!q.equals(path))updated.put(q);}
+                        f.delete(); savePhotos(key,updated); photoView.dismiss(); showPhotos(key);
+                    }).show();
+            });
+        });
+        photoView.show();
     }
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data) {
         super.onActivityResult(requestCode,resultCode,data); if(requestCode!=4102||resultCode!=RESULT_OK||data==null||pendingPhotoDate==null)return; int count=0;
         try { if(data.getClipData()!=null){for(int i=0;i<data.getClipData().getItemCount();i++)if(copyPhoto(data.getClipData().getItemAt(i).getUri(),pendingPhotoDate))count++;} else if(data.getData()!=null&&copyPhoto(data.getData(),pendingPhotoDate))count++; } catch(Exception e) { Toast.makeText(this,"Не все фотографии удалось добавить",Toast.LENGTH_LONG).show(); }
-        Toast.makeText(this,"Добавлено фотографий: "+count,Toast.LENGTH_SHORT).show(); showPhotos(pendingPhotoDate);
+        Toast.makeText(this,"Добавлено фотографий: "+count,Toast.LENGTH_SHORT).show(); if (photosDialog != null && photosDialog.isShowing()) showPhotos(pendingPhotoDate);
     }
     private boolean copyPhoto(Uri uri,String key) {
         try(InputStream in=getContentResolver().openInputStream(uri)){ if(in==null)return false; File dir=new File(getFilesDir(),"day_photos/"+key); if(!dir.exists()&&!dir.mkdirs())return false; File f=new File(dir,"document_"+System.currentTimeMillis()+".img"); try(FileOutputStream out=new FileOutputStream(f)){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);} JSONArray a=getPhotos(key);a.put(f.getAbsolutePath());savePhotos(key,a);return true;}catch(Exception e){return false;}
@@ -198,6 +244,7 @@ public class MainActivity extends Activity {
         for (int i = 0; i < rates.length; i++) {
             LinearLayout row = card(); row.addView(text(rateNames[i], 15, DARK, true)); row.addView(text(rateUnits[i], 12, MUTED, false));
             EditText input = new EditText(this); input.setSingleLine(true); input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); input.setText(numberForInput(rates[i]));
+            input.setTextColor(Color.WHITE); input.setHintTextColor(Color.rgb(170,170,170)); input.setBackground(roundRect(Color.BLACK, BORDER, 1, 5)); input.setPadding(dp(10), 0, dp(10), 0);
             row.addView(input, new LinearLayout.LayoutParams(-1, dp(48))); LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2); rp.bottomMargin = dp(8); form.addView(row, rp); fields[i] = input;
         }
         scroll.addView(form); content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
